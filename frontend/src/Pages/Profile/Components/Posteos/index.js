@@ -13,6 +13,9 @@ const Posteos = () => {
     const [selectedPost, setSelectedPost] = useState(null);
     const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
     const [selectedPostId, setSelectedPostId] = useState(null);
+    const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+    const [isDeleteCommentConfirmOpen, setIsDeleteCommentConfirmOpen] = useState(false);
+    const [selectedCommentId, setSelectedCommentId] = useState(null);
 
     useEffect(() => {
         fetchPosts();
@@ -36,7 +39,6 @@ const Posteos = () => {
                     respuestas_posteos (count)
                 `)
                 .order('fechapublicacion', { ascending: false });
-
             if (error) throw error;
             setPosts(data);
         } catch (error) {
@@ -60,7 +62,6 @@ const Posteos = () => {
         try {
             const isLiked = likedPosts[postId];
             const newLikeCount = isLiked ? currentLikes - 1 : currentLikes + 1;
-
             const { data, error } = await supabase
                 .from('posteos')
                 .update({ likes: newLikeCount })
@@ -84,22 +85,46 @@ const Posteos = () => {
         }
     };
 
-    const handleDeleteTweet = async (event, postId) => {
-        event.stopPropagation();
-        if (window.confirm("Are you sure you want to delete this tweet?")) {
-            try {
-                const { error } = await supabase
-                    .from('posteos')
-                    .delete()
-                    .eq('id', postId);
+    const handleDeleteTweet = async () => {
+        try {
+            const { error } = await supabase
+                .from('posteos')
+                .delete()
+                .eq('id', selectedPostId);
 
-                if (error) throw error;
+            if (error) throw error;
 
-                setPosts(posts.filter(post => post.id !== postId));
-                setSelectedPost(null);
-            } catch (error) {
-                console.error("Error deleting tweet:", error);
-            }
+            setPosts(posts.filter(post => post.id !== selectedPostId));
+            setSelectedPost(null);
+            setIsConfirmModalOpen(false);
+        } catch (error) {
+            console.error("Error deleting tweet:", error);
+        }
+    };
+
+    const handleDeleteComment = async () => {
+        try {
+            const { error } = await supabase
+                .from('respuestas_posteos')
+                .delete()
+                .eq('id', selectedCommentId);
+
+            if (error) throw error;
+
+            setPosts(posts.map(post => {
+                if (post.id === selectedPostId) {
+                    return {
+                        ...post,
+                        respuestas_posteos: [
+                            { count: post.respuestas_posteos[0].count - 1 }
+                        ]
+                    };
+                }
+                return post;
+            }));
+            setIsDeleteCommentConfirmOpen(false);
+        } catch (error) {
+            console.error("Error deleting comment:", error);
         }
     };
 
@@ -125,6 +150,18 @@ const Posteos = () => {
         ));
     };
 
+    const openConfirmModal = (event, postId) => {
+        event.stopPropagation();
+        setSelectedPostId(postId);
+        setIsConfirmModalOpen(true);
+    };
+
+    const openDeleteCommentConfirmModal = (event, commentId) => {
+        event.stopPropagation();
+        setSelectedCommentId(commentId);
+        setIsDeleteCommentConfirmOpen(true);
+    };
+
     return (
         <div className="posteos-container">
             <button className="new-tweet-button" onClick={() => setIsModalOpen(true)}>
@@ -135,42 +172,44 @@ const Posteos = () => {
                 onClose={() => setIsModalOpen(false)}
                 onTweetCreated={handleTweetCreated}
             />
-            {posts.map(post => (
-                <div key={post.id} className="post" onClick={() => handlePostClick(post)} style={{ cursor: 'pointer' }}>
-                    <div className="post-header">
-                        <img
-                            src={post.usuarios?.perfil_jugadores?.[0]?.avatar_url || 'default-avatar.png'}
-                            alt="Avatar del usuario"
-                            className="user-avatar"
-                        />
-                        <div className="dxd">
-                            <h3>{post.usuarios?.nombre || 'Unknown'} {post.usuarios?.apellido || 'User'}</h3>
-                            <p>{new Date(post.fechapublicacion).toLocaleString()}</p>
+            <div className="posts-scroll-container">
+                {posts.map(post => (
+                    <div key={post.id} className="post" onClick={() => handlePostClick(post)} style={{ cursor: 'pointer' }}>
+                        <div className="post-header">
+                            <img
+                                src={post.usuarios?.perfil_jugadores?.[0]?.avatar_url || 'default-avatar.png'}
+                                alt="Avatar del usuario"
+                                className="user-avatar"
+                            />
+                            <div className="dxd">
+                                <h3>{post.usuarios?.nombre || 'Unknown'} {post.usuarios?.apellido || 'User'}</h3>
+                                <p>{new Date(post.fechapublicacion).toLocaleString()}</p>
+                            </div>
+                            <button
+                                onClick={(event) => openConfirmModal(event, post.id)}
+                                className="delete-button"
+                            >
+                                <FaTrash />
+                            </button>
                         </div>
-                        <button
-                            onClick={(event) => handleDeleteTweet(event, post.id)}
-                            className="delete-button"
-                        >
-                            <FaTrash />
-                        </button>
+                        <p className="post-content">{post.contenido}</p>
+                        <div className="post-footerA">
+                            <button
+                                onClick={(event) => handleLike(event, post.id, post.likes)}
+                                className={`ytr-button ${likedPosts[post.id] ? 'liked' : ''}`}
+                            >
+                                <FaHeart className="ytr" /> {post.likes || 0}
+                            </button>
+                            <button
+                                onClick={(event) => handleCommentClick(event, post.id)}
+                                className="ytr-button"
+                            >
+                                <FaComment className="ytr" /> {post.respuestas_posteos[0]?.count || 0}
+                            </button>
+                        </div>
                     </div>
-                    <p className="post-content">{post.contenido}</p>
-                    <div className="post-footerA">
-                        <button
-                            onClick={(event) => handleLike(event, post.id, post.likes)}
-                            className={`ytr-button ${likedPosts[post.id] ? 'liked' : ''}`}
-                        >
-                            <FaHeart className="ytr" /> {post.likes || 0}
-                        </button>
-                        <button
-                            onClick={(event) => handleCommentClick(event, post.id)}
-                            className="ytr-button"
-                        >
-                            <FaComment className="ytr" /> {post.respuestas_posteos[0]?.count || 0}
-                        </button>
-                    </div>
-                </div>
-            ))}
+                ))}
+            </div>
             {selectedPost && (
                 <PostDetail
                     post={selectedPost}
@@ -187,7 +226,36 @@ const Posteos = () => {
                 onCommentCreated={handleCommentCreated}
                 postId={selectedPostId}
             />
-
+            {isConfirmModalOpen && (
+                <div className="confirm-modal">
+                    <div className="confirm-modal-content">
+                        <h3>¿Estás seguro de que deseas eliminar este post?</h3>
+                        <div className="confirm-modal-buttons">
+                            <button onClick={() => setIsConfirmModalOpen(false)} className="cancel-button">
+                                Cancelar
+                            </button>
+                            <button onClick={handleDeleteTweet} className="delete-confirm-button">
+                                Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+            {isDeleteCommentConfirmOpen && (
+                <div className="confirm-modal">
+                    <div className="confirm-modal-content">
+                        <h3>¿Estás seguro de que deseas eliminar este comentario?</h3>
+                        <div className="confirm-modal-buttons">
+                            <button onClick={() => setIsDeleteCommentConfirmOpen(false)} className="cancel-button">
+                                Cancelar
+                            </button>
+                            <button onClick={handleDeleteComment} className="delete-confirm-button">
+                                Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

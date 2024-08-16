@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import supabase from '../../../../Configs/supabaseClient';
 import { FaHeart, FaComment, FaArrowLeft, FaTrash } from 'react-icons/fa';
-import NewCommentModal from '../NewCommentModal'; // Nuevo componente que crearemos
+import NewCommentModal from '../NewCommentModal';
 import './index.css';
+
 
 const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts }) => {
     const [comments, setComments] = useState([]);
@@ -10,10 +11,14 @@ const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts })
     const [isCommentModalOpen, setIsCommentModalOpen] = useState(false);
     const [selectedParentId, setSelectedParentId] = useState(null);
     const [likedComments, setLikedComments] = useState({});
+    const [isDeleteCommentConfirmOpen, setIsDeleteCommentConfirmOpen] = useState(false);
+    const [selectedCommentId, setSelectedCommentId] = useState(null);
+
 
     useEffect(() => {
         fetchComments();
     }, [post.id]);
+
 
     const fetchComments = async () => {
         try {
@@ -34,12 +39,14 @@ const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts })
                 .eq('posteoid', post.id)
                 .order('fechapublicacion', { ascending: true });
 
+
             if (error) throw error;
             setComments(data);
         } catch (error) {
             console.error("Error fetching comments:", error);
         }
     };
+
 
     const handleLocalLike = (event) => {
         onLike(event, localPost.id, localPost.likes);
@@ -48,37 +55,44 @@ const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts })
             likes: likedPosts[prevPost.id] ? prevPost.likes - 1 : prevPost.likes + 1
         }));
     };
+
+
     const handleLocalDelete = async (event) => {
         await onDelete(event, localPost.id);
         onClose();
         fetchPosts();
     };
 
+
     const handleCommentCreated = (newComment) => {
         setComments([...comments, newComment]);
     };
 
-    const handleDeleteComment = async (commentId) => {
-        if (window.confirm("Are you sure you want to delete this comment?")) {
-            try {
-                const { error } = await supabase
-                    .from('respuestas_posteos')
-                    .delete()
-                    .eq('id', commentId);
 
-                if (error) throw error;
+    const handleDeleteComment = async () => {
+        try {
+            const { error } = await supabase
+                .from('respuestas_posteos')
+                .delete()
+                .eq('id', selectedCommentId);
 
-                setComments(comments.filter(comment => comment.id !== commentId));
-            } catch (error) {
-                console.error("Error deleting comment:", error);
-            }
+
+            if (error) throw error;
+
+
+            setComments(comments.filter(comment => comment.id !== selectedCommentId));
+            setIsDeleteCommentConfirmOpen(false);
+        } catch (error) {
+            console.error("Error deleting comment:", error);
         }
     };
+
 
     const convertToLocalTime = (utcDateString) => {
         const date = new Date(utcDateString);
         return date.toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires' });
     };
+
 
     useEffect(() => {
         const storedLikes = localStorage.getItem('likedComments');
@@ -87,10 +101,12 @@ const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts })
         }
     }, []);
 
+
     const handleCommentLike = async (commentId, currentLikes) => {
         try {
             const isLiked = likedComments[commentId];
             const newLikeCount = isLiked ? currentLikes - 1 : currentLikes + 1;
+
 
             const { data, error } = await supabase
                 .from('respuestas_posteos')
@@ -98,11 +114,14 @@ const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts })
                 .eq('id', commentId)
                 .select();
 
+
             if (error) throw error;
+
 
             setComments(comments.map(comment =>
                 comment.id === commentId ? { ...comment, likes: data[0].likes } : comment
             ));
+
 
             const newLikedComments = {
                 ...likedComments,
@@ -115,12 +134,12 @@ const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts })
         }
     };
 
+
     const renderComments = (parentId = null, depth = 0) => {
         return comments
             .filter(comment => comment.parentid === parentId)
             .map(comment => (
                 <div key={comment.id} className="comment" style={{ marginLeft: `${depth * 20}px` }}>
-                    {/* Renderizar el contenido del comentario */}
                     <div className="comment-header">
                         <img
                             src={comment.usuarios?.perfil_jugadores?.[0]?.avatar_url || 'default-avatar.png'}
@@ -146,15 +165,21 @@ const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts })
                         }} className="reply-button">
                             <FaComment /> {(comment.respuestas && comment.respuestas[0]?.count) || 0}
                         </button>
-                        <button onClick={() => handleDeleteComment(comment.id)} className="delete-button">
+                        <button onClick={() => openDeleteCommentConfirmModal(comment.id)} className="delete-button">
                             <FaTrash />
                         </button>
                     </div>
-                    {/* Renderizar comentarios hijos de forma recursiva */}
                     {renderComments(comment.id, depth + 1)}
                 </div>
             ));
     };
+
+
+    const openDeleteCommentConfirmModal = (commentId) => {
+        setSelectedCommentId(commentId);
+        setIsDeleteCommentConfirmOpen(true);
+    };
+
 
     return (
         <div className="post-detail-overlay">
@@ -199,7 +224,7 @@ const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts })
                         </button>
                     </div>
                 </div>
-                <div className="comments-section">
+                <div className="comments-scroll-container">
                     <h3>Comments</h3>
                     {renderComments()}
                 </div>
@@ -214,8 +239,24 @@ const PostDetail = ({ post, onClose, onDelete, onLike, likedPosts, fetchPosts })
                 postId={localPost.id}
                 parentId={selectedParentId}
             />
+            {isDeleteCommentConfirmOpen && (
+                <div className="confirm-modal">
+                    <div className="confirm-modal-content">
+                        <h3>¿Estás seguro de que deseas eliminar este comentario?</h3>
+                        <div className="confirm-modal-buttons">
+                            <button onClick={() => setIsDeleteCommentConfirmOpen(false)} className="cancel-button">
+                                Cancelar
+                            </button>
+                            <button onClick={handleDeleteComment} className="delete-confirm-button">
+                                Eliminar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
+
 
 export default PostDetail;
